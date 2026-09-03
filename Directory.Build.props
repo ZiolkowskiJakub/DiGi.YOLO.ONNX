@@ -1,0 +1,40 @@
+<Project>
+  <PropertyGroup>
+    <Major>0</Major>
+    <Minor>8</Minor>
+    <Build>0</Build>
+
+    <!-- Assembly binding version (keep stable for compatibility) -->
+    <AssemblyVersion>$(Major).$(Minor).$(Build)</AssemblyVersion>
+
+    <!-- NuGet package version -->
+    <Version>$(Major).$(Minor).$(Build)</Version>
+
+    <!-- File version (changes every build) -->
+    <FileVersion>$(Major).$(Minor).$(Build)</FileVersion>
+
+    <!-- Build = yyyyMMddHHmmss (UTC) -->
+    <Revision>$([System.DateTime]::UtcNow.ToString("yyyyMMddHHmmss"))</Revision>
+
+    <!-- Informational version (human-readable, can include git commit later) -->
+    <InformationalVersion>$(Major).$(Minor).$(Build).$(Revision)</InformationalVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Configure standard project settings for C# 12+ / Visual Studio 2026 -->
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <!-- Explicit using directives everywhere, per the DiGi house style. With implicit usings on,
+         EnforceCodeStyleInBuild plus TreatWarningsAsErrors turns every explicit "using System;"
+         into an IDE0005 build error. -->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!-- Enable XML Documentation file generation for all non-test C# projects -->
+  <PropertyGroup Condition="'$(IsTestProject)' != 'true' And '$(MSBuildProjectExtension)' == '.csproj'">
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+</Project>
