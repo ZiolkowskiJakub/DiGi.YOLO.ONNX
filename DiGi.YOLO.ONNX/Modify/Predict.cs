@@ -22,10 +22,10 @@ namespace DiGi.YOLO.ONNX
     {
         /// <summary>
         /// Scores a directory of images against an exported ONNX model in this process and writes the detections to a bounding box result file.
-        /// <para>This is the in-process counterpart of <see cref="DiGi.YOLO.Modify.Predict(DiGi.YOLO.Classes.YOLOPredictionOptions?, CancellationToken)"/>, which runs the same detector through a CPython interpreter. Everything observable is deliberately the same: the images are taken in the order predict.py globs them, an image with nothing on it gets a line carrying only its name, a detection is written as name, label, corner, extents and confidence, and a stale result file is removed before anything is written so a failed run cannot be mistaken for this one. A source directory holding no images is answered without loading the model at all.</para>
+        /// <para>This is the in-process counterpart of <see cref="YOLO.Modify.Predict(DiGi.YOLO.Classes.YOLOPredictionOptions?, CancellationToken)"/>, which runs the same detector through a CPython interpreter. Everything observable is deliberately the same: the images are taken in the order predict.py globs them, an image with nothing on it gets a line carrying only its name, a detection is written as name, label, corner, extents and confidence, and a stale result file is removed before anything is written so a failed run cannot be mistaken for this one. A source directory holding no images is answered without loading the model at all.</para>
         /// <para>Preprocessing goes through the same OpenCV that ultralytics calls through cv2 - the same JPEG decoder, the same bilinear resize - so the two paths differ only by the arithmetic of the graph itself rather than by what was fed into it.</para>
-        /// <para>An image that will not decode is reported in <see cref="Classes.YOLOONNXPredictionResult.Messages"/> and given a line carrying only its name. Ultralytics would end the run instead; this keeps the result file aligned one-for-one with the source listing, which is what everything downstream of it assumes.</para>
-        /// <para>There is one known divergence, and it is reported rather than left silent. For a batch of equally shaped images ultralytics letterboxes onto the smallest canvas that is a multiple of the model stride, which for a non-square image is not a square; this path always pads onto a square. Every image the pipeline scores is 320 pixels square, so the two are the same transform and the divergence has never applied - a non-square source puts a note in <see cref="Classes.YOLOONNXPredictionResult.Messages"/> saying its detections may differ from the CPython path.</para>
+        /// <para>An image that will not decode is reported in <see cref="YOLOONNXPredictionResult.Messages"/> and given a line carrying only its name. Ultralytics would end the run instead; this keeps the result file aligned one-for-one with the source listing, which is what everything downstream of it assumes.</para>
+        /// <para>There is one known divergence, and it is reported rather than left silent. For a batch of equally shaped images ultralytics letterboxes onto the smallest canvas that is a multiple of the model stride, which for a non-square image is not a square; this path always pads onto a square. Every image the pipeline scores is 320 pixels square, so the two are the same transform and the divergence has never applied - a non-square source puts a note in <see cref="YOLOONNXPredictionResult.Messages"/> saying its detections may differ from the CPython path.</para>
         /// </summary>
         /// <param name="yOLOONNXPredictionOptions">The settings for the run.</param>
         /// <param name="cancellationToken">The token that cancels the run.</param>
@@ -46,9 +46,9 @@ namespace DiGi.YOLO.ONNX
                 return null;
             }
 
-            modelPath = DiGi.YOLO.Query.NormalizedPath(modelPath) ?? modelPath;
-            sourceDirectory = DiGi.YOLO.Query.NormalizedPath(sourceDirectory) ?? sourceDirectory;
-            outputPath = DiGi.YOLO.Query.NormalizedPath(outputPath) ?? outputPath;
+            modelPath = YOLO.Query.NormalizedPath(modelPath) ?? modelPath;
+            sourceDirectory = YOLO.Query.NormalizedPath(sourceDirectory) ?? sourceDirectory;
+            outputPath = YOLO.Query.NormalizedPath(outputPath) ?? outputPath;
 
             DateTimeOffset start = DateTimeOffset.Now;
 
