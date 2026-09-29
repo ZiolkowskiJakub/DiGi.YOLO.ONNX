@@ -55,7 +55,9 @@ with it, and the symptom of forgetting is a partial result rather than an error.
 The ONNX file is a **one-off preparation step that still needs ultralytics**, so removing the Python
 dependency removes it from every run rather than from the repository. `DiGi.YOLO`'s `export.py`
 produces it, and must be run with the version that wrote the checkpoint — `ultralytics==8.3.130` —
-or the exported graph is a different detector.
+or the exported graph is a different detector. The export is repeated whenever the checkpoint is
+retrained: a new checkpoint is a new detector, so the new graph is re-measured against the CPython
+path before the in-process numbers are trusted again.
 
 ```bash
 python export.py --model "user files/YOLO/models/model.pt" --output "user files/YOLO/models/model.onnx"
