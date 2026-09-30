@@ -25,6 +25,7 @@ namespace DiGi.YOLO.ONNX
         /// <para>This is the in-process counterpart of <see cref="YOLO.Modify.Predict(DiGi.YOLO.Classes.YOLOPredictionOptions?, CancellationToken)"/>, which runs the same detector through a CPython interpreter. Everything observable is deliberately the same: the images are taken in the order predict.py globs them, an image with nothing on it gets a line carrying only its name, a detection is written as name, label, corner, extents and confidence, and a stale result file is removed before anything is written so a failed run cannot be mistaken for this one. A source directory holding no images is answered without loading the model at all.</para>
         /// <para>Preprocessing goes through the same OpenCV that ultralytics calls through cv2 - the same JPEG decoder, the same bilinear resize - so the two paths differ only by the arithmetic of the graph itself rather than by what was fed into it.</para>
         /// <para>An image that will not decode is reported in <see cref="YOLOONNXPredictionResult.Messages"/> and given a line carrying only its name. Ultralytics would end the run instead; this keeps the result file aligned one-for-one with the source listing, which is what everything downstream of it assumes.</para>
+        /// <para>Only the raw one-to-many head is decoded - four box values and one score per class for every anchor, suppressed here as ultralytics suppresses it. A graph exported as the end-to-end (NMS-free) head is refused before any image is read, because it is a different detector from the one the CPython path scores and its [batch, max_det, 6] layout would otherwise decode into nonsense without an error: the run fails with a message when the metadata carries end2end, or when the declared output is not three-dimensional or states no more anchors than channels.</para>
         /// <para>There is one known divergence, and it is reported rather than left silent. For a batch of equally shaped images ultralytics letterboxes onto the smallest canvas that is a multiple of the model stride, which for a non-square image is not a square; this path always pads onto a square. Every image the pipeline scores is 320 pixels square, so the two are the same transform and the divergence has never applied - a non-square source puts a note in <see cref="YOLOONNXPredictionResult.Messages"/> saying its detections may differ from the CPython path.</para>
         /// </summary>
         /// <param name="yOLOONNXPredictionOptions">The settings for the run.</param>
@@ -105,6 +106,22 @@ namespace DiGi.YOLO.ONNX
 
             try
             {
+                //Ultralytics 8.4 exports a model that has a one-to-one head as that head when told nms=False - top-k boxes as [batch, max_det, 6], a different detector from
+                //the one-to-many head the CPython path scores. Nothing further down would stop that layout: it decodes into nonsense and the run reports success. It is refused
+                //by the flag ultralytics writes into the metadata and, for a graph carrying none, by its shape, since a raw head declares far more anchors than channels
+                if (inferenceSession.ModelMetadata.CustomMetadataMap.TryGetValue("end2end", out string? end2End) && string.Equals(end2End?.Trim(), "True", StringComparison.OrdinalIgnoreCase))
+                {
+                    messages.Add("Model is an end-to-end (NMS-free) export answering [batch, max_det, 6], which this path cannot decode; re-export it with nms left at its default.");
+                    return new YOLOONNXPredictionResult(paths_Image.Count, outputPath, null, messages, start, DateTimeOffset.Now);
+                }
+
+                int[] dimensions_Output_Declared = inferenceSession.OutputMetadata[inferenceSession.OutputMetadata.Keys.First()].Dimensions;
+                if (dimensions_Output_Declared.Length != 3 || (dimensions_Output_Declared[1] > 0 && dimensions_Output_Declared[2] > 0 && dimensions_Output_Declared[2] <= dimensions_Output_Declared[1]))
+                {
+                    messages.Add(string.Format(CultureInfo.InvariantCulture, "Model declares an output of [{0}], not the raw [batch, 4 + classes, anchors] layout this path decodes.", string.Join(", ", dimensions_Output_Declared)));
+                    return new YOLOONNXPredictionResult(paths_Image.Count, outputPath, null, messages, start, DateTimeOffset.Now);
+                }
+
                 string name_Input = inferenceSession.InputMetadata.Keys.First();
                 int[] dimensions_Input = inferenceSession.InputMetadata[name_Input].Dimensions;
 

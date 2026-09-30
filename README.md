@@ -54,14 +54,25 @@ with it, and the symptom of forgetting is a partial result rather than an error.
 
 The ONNX file is a **one-off preparation step that still needs ultralytics**, so removing the Python
 dependency removes it from every run rather than from the repository. `DiGi.YOLO`'s `export.py`
-produces it, and must be run with the version that wrote the checkpoint — `ultralytics==8.3.130` —
-or the exported graph is a different detector. The export is repeated whenever the checkpoint is
+produces it, and must be run with the ultralytics version pinned in `DiGi.YOLO`'s `requirements.txt`
+(`8.4.165`, verified in [DiGi.YOLO#17](https://github.com/ZiolkowskiJakub/DiGi.YOLO/issues/17) to
+reproduce the frozen checkpoint's detections) — a version nobody has checked can export a different
+detector. The export is repeated whenever the checkpoint is
 retrained: a new checkpoint is a new detector, so the new graph is re-measured against the CPython
 path before the in-process numbers are trusted again.
 
 ```bash
 python export.py --model "user files/YOLO/models/model.pt" --output "user files/YOLO/models/model.onnx"
 ```
+
+**The graph has to be the raw one-to-many head** — `[batch, 4 + classes, anchors]`, suppressed on the
+C# side exactly as ultralytics suppresses it. Since ultralytics 8.4, exporting with `nms=False`
+selects the NMS-free one-to-one head of a model that has one (YOLO26), which answers
+`[batch, max_det, 6]` and is a different detector from the one the CPython path scores, so the export
+leaves `nms` at its default ([DiGi.YOLO#20](https://github.com/ZiolkowskiJakub/DiGi.YOLO/issues/20)).
+`Modify.Predict` refuses such a graph before scoring anything — by the `end2end` flag ultralytics
+writes into the metadata, or by a declared output that states no more anchors than channels — rather
+than decoding it into detections that look plausible and mean nothing.
 
 The provenance of the artefact it produces is recorded in the
 [DiGi.YOLO README](https://github.com/ZiolkowskiJakub/DiGi.YOLO#readme), beside the checkpoint's own.

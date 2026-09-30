@@ -193,6 +193,8 @@ Preprocessing goes through the same OpenCV that ultralytics calls through cv2 - 
 
 An image that will not decode is reported in [Messages](DiGi.YOLO.ONNX.Classes.md#DiGi.YOLO.ONNX.Classes.YOLOONNXPredictionResult.Messages 'DiGi\.YOLO\.ONNX\.Classes\.YOLOONNXPredictionResult\.Messages') and given a line carrying only its name. Ultralytics would end the run instead; this keeps the result file aligned one-for-one with the source listing, which is what everything downstream of it assumes.
 
+Only the raw one-to-many head is decoded - four box values and one score per class for every anchor, suppressed here as ultralytics suppresses it. A graph exported as the end-to-end (NMS-free) head is refused before any image is read, because it is a different detector from the one the CPython path scores and its [batch, max_det, 6] layout would otherwise decode into nonsense without an error: the run fails with a message when the metadata carries end2end, or when the declared output is not three-dimensional or states no more anchors than channels.
+
 There is one known divergence, and it is reported rather than left silent. For a batch of equally shaped images ultralytics letterboxes onto the smallest canvas that is a multiple of the model stride, which for a non-square image is not a square; this path always pads onto a square. Every image the pipeline scores is 320 pixels square, so the two are the same transform and the divergence has never applied - a non-square source puts a note in [Messages](DiGi.YOLO.ONNX.Classes.md#DiGi.YOLO.ONNX.Classes.YOLOONNXPredictionResult.Messages 'DiGi\.YOLO\.ONNX\.Classes\.YOLOONNXPredictionResult\.Messages') saying its detections may differ from the CPython path.
 
 ```csharp
