@@ -4,6 +4,7 @@ using Emgu.CV;
 using Emgu.CV.CvEnum;
 using Emgu.CV.Dnn;
 using Emgu.CV.Structure;
+using Emgu.CV.Util;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
@@ -24,7 +25,7 @@ namespace DiGi.YOLO.ONNX
         /// Scores a directory of images against an exported ONNX model in this process and writes the detections to a bounding box result file.
         /// <para>This is the in-process counterpart of <see cref="YOLO.Modify.Predict(DiGi.YOLO.Classes.YOLOPredictionOptions?, CancellationToken)"/>, which runs the same detector through a CPython interpreter. Everything observable is deliberately the same: the images are taken in the order predict.py globs them, an image with nothing on it gets a line carrying only its name, a detection is written as name, label, corner, extents and confidence, and a stale result file is removed before anything is written so a failed run cannot be mistaken for this one. A source directory holding no images is answered without loading the model at all.</para>
         /// <para>Preprocessing goes through the same OpenCV that ultralytics calls through cv2 - the same JPEG decoder, the same bilinear resize - so the two paths differ only by the arithmetic of the graph itself rather than by what was fed into it.</para>
-        /// <para>An image that will not decode is reported in <see cref="YOLOONNXPredictionResult.Messages"/> and given a line carrying only its name. Ultralytics would end the run instead; this keeps the result file aligned one-for-one with the source listing, which is what everything downstream of it assumes.</para>
+        /// <para>An image that will not decode is reported in <see cref="YOLOONNXPredictionResult.Messages"/> and given a line carrying only its name. Emgu 4.12's Imread throws instead of returning an empty Mat in that case, so the decode call is caught and both failure shapes are handled here rather than escaped; Ultralytics would end the run instead, and this keeps the result file aligned one-for-one with the source listing, which is what everything downstream of it assumes.</para>
         /// <para>Only the raw one-to-many head is decoded - four box values and one score per class for every anchor, suppressed here as ultralytics suppresses it. A graph exported as the end-to-end (NMS-free) head is refused before any image is read, because it is a different detector from the one the CPython path scores and its [batch, max_det, 6] layout would otherwise decode into nonsense without an error: the run fails with a message when the metadata carries end2end, or when the declared output is not three-dimensional or states no more anchors than channels.</para>
         /// <para>There is one known divergence, and it is reported rather than left silent. For a batch of equally shaped images ultralytics letterboxes onto the smallest canvas that is a multiple of the model stride, which for a non-square image is not a square; this path always pads onto a square. Every image the pipeline scores is 320 pixels square, so the two are the same transform and the divergence has never applied - a non-square source puts a note in <see cref="YOLOONNXPredictionResult.Messages"/> saying its detections may differ from the CPython path.</para>
         /// </summary>
@@ -192,7 +193,21 @@ namespace DiGi.YOLO.ONNX
                             {
                                 string path_Image = paths_Image[i + Math.Min(j, count_Chunk - 1)];
 
-                                Mat mat = CvInvoke.Imread(path_Image, ImreadModes.ColorBgr);
+                                //Emgu 4.12 throws instead of returning an empty Mat when a file will not decode, so an undecodable image used to escape the per-image loop and abort the run. Both failure shapes land in the same branch.
+                                Mat? mat = null;
+                                try
+                                {
+                                    mat = CvInvoke.Imread(path_Image, ImreadModes.ColorBgr);
+                                }
+                                catch (ArgumentException)
+                                {
+                                    //A truncated or otherwise undecodable image is reported by Emgu this way
+                                }
+                                catch (CvException)
+                                {
+                                    //OpenCV's own decode failure, e.g. a 0-byte file
+                                }
+
                                 if (mat == null || mat.IsEmpty)
                                 {
                                     mat?.Dispose();
