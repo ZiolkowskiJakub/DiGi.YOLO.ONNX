@@ -88,13 +88,25 @@ detection by detection.
 
 ### The stated tolerance
 
-| Bound | Stated | Observed over 2 000 held images |
-|---|---|---|
-| Images agreeing on detection count | ≥ 99.5 % | **100 %** (2 000 of 2 000) |
-| Confident detections with no partner | 0 | **0** |
-| 99th percentile box deviation | ≤ 0.1 px | **0.034 px** (median 0.004 px) |
-| Overlap of any matched pair | ≥ 0.95 | **0.970** |
-| Confidence deviation | ≤ 0.01 | **0.001062** |
+Observed over the same 2 000 held images of county 104106 for each checkpoint. `train8` is the frozen
+detector in production. `train9_fresh` is the retrained detector selected by the gate of
+[DiGi.GIS.YOLO.UI#12](https://github.com/ZiolkowskiJakub/DiGi.GIS.YOLO.UI/issues/12), exported on
+2026-10-07 and staged beside it. It becomes `model.onnx` when it ships
+([#2](https://github.com/ZiolkowskiJakub/DiGi.YOLO.ONNX/issues/2)).
+
+| Bound | Stated | `train8` (YOLOv8x, 2026-09-03) | `train9_fresh` (YOLO26x, 2026-10-07) |
+|---|---|---|---|
+| Images agreeing on detection count | ≥ 99.5 % | **100 %** (2 000 of 2 000) | **100 %** (2 000 of 2 000) |
+| Confident detections with no partner | 0 | **0** of 1 639 | **0** of 1 633 |
+| 99th percentile box deviation | ≤ 0.1 px | **0.034 px** (median 0.004 px) | **0.047 px** (median 0.005 px) |
+| Box deviations over 1 px (worst) | not bounded | 2 (3.3 px) | 2 (1.9 px) |
+| Overlap of any matched pair | ≥ 0.95 | **0.970** | **0.977** |
+| Confidence deviation | ≤ 0.01 | **0.001062** | **0.001859** |
+
+The `train8` row was re-measured on 2026-09-30 under ultralytics 8.4.165, the version that exports and
+runs both checkpoints. It agreed with the figures above (99th percentile 0.033 px, worst overlap
+0.970, worst confidence deviation 0.001394), so a difference between the two columns comes from the
+weights, not the toolchain.
 
 The tolerance is not zero and cannot be: one path runs an fp32 CUDA graph through torch and the
 other an fp32 graph through ONNX Runtime, so the last bits of every number differ. A detection whose
@@ -102,25 +114,32 @@ confidence sits on the reporting threshold legitimately appears on one side and 
 detections inside a guard band around the threshold are left out of the count comparison rather than
 counted as disagreements.
 
-**Coordinates are bounded at a percentile rather than at a maximum, on purpose.** Measured: 2 of
-1 639 matched detections move by more than a pixel, the worst by 3.3 px — and that one had its
-confidence agreeing to 1e-5 with exactly one detection on each side, so it is not a suppression tie
-and it is not a systematic shift either (the median is 0.004 px). The explanation that fits, though
-it has not been proven by instrumenting the graph: YOLOv8 regresses each box edge as a softmax
-expectation over sixteen bins measured in units of the feature stride, and that expectation is far
-more sensitive to the last bits than the single sigmoid the class score comes from, so an edge can
-move a fraction of a bin — several pixels at stride 32 — while the score does not move at all. Bounding the maximum would mean stating a tolerance of about 4 px, and a 4 px bound
-would no longer notice a real coordinate regression against a median of 0.004 px. Every individual
-detection is instead guarded by the overlap of its matched pair, which stays high however the edges
-wander.
+**Coordinates are bounded at a percentile rather than at a maximum, on purpose.** Both checkpoints
+show the same tail. 2 of about 1 600 matched detections move by more than a pixel: the worst by 3.3 px
+(`train8`) and 1.9 px (`train9_fresh`). The worst `train8` case had its confidence agreeing to 1e-5,
+with exactly one detection on each side. It is therefore not a suppression tie, and with a median of
+0.004 px it is not a systematic shift either.
+
+For YOLOv8 a mechanism fits, though nobody has proven it by instrumenting the graph. Each box edge is
+a softmax expectation over sixteen bins (DFL) in units of the feature stride. That expectation is far
+more sensitive to the last bits than the single sigmoid behind the class score, so an edge can move a
+fraction of a bin, which is several pixels at stride 32, while the score stays put. YOLO26 has no DFL
+(`reg_max = 1`, one regressed distance per edge) and still shows the tail, only shorter. So DFL
+amplifies the effect but does not cause it alone; a stride-scaled box regression magnifies the last
+bits whichever head produces it.
+
+Bounding the maximum would mean stating a tolerance of about 4 px, and a 4 px bound would no longer
+notice a real coordinate regression against a median of 0.004 px. Instead, every individual detection
+is guarded by the overlap of its matched pair, which stays high however the edges wander.
 
 ### Throughput, for the record
 
 The CPython path reaches **12.8 ms/image** on CUDA in steady state. The ONNX path on the **CPU**
-execution provider takes **177 ms/image** — this is a 68-million-parameter network at 640×640, so
-that is expected rather than surprising, and it is why the pipeline default was left on CPython.
-Making the in-process path fast is a separate question of choosing a GPU execution provider, and is
-deliberately not answered here.
+execution provider takes **177 ms/image** for `train8` (68 million parameters at 640×640) and
+**172 ms/image** for `train9_fresh` (YOLO26x, 56 million). That is expected rather than surprising,
+and it is why the pipeline stays on CPython. Choosing a GPU execution provider to make the in-process
+path fast ([#1](https://github.com/ZiolkowskiJakub/DiGi.YOLO.ONNX/issues/1)) was closed as not
+planned on 2026-10-07: the in-process path is kept as a parity reference, not as a pipeline engine.
 
 ## 💻 Coding Guidelines for Developers & AI Agents
 
